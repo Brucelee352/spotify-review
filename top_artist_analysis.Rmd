@@ -1,0 +1,325 @@
+---
+title: "Spotify Review"
+author: "Bruce"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: console
+---
+
+# Introduction
+
+Hello! Welcome to my analysis of my Spotify account, where I break down all the wonderful things that i've been listening to recently. This write-up was inspired by many of the content I found looking up project idea relating to Spotifyr, and I was amazed to see the things that I've been listening to in the short-term. 
+
+The first thing we'll do here is load all of the libraries we're going to use!
+
+```{r libraries, echo = F, warning = F, message = F}
+library(jsonlite)
+library(lubridate)
+library(ggrepel)
+library(gghighlight)
+library(tidyverse)
+library(knitr)
+library(ggplot2)
+library(plotly)
+library(pheatmap)
+```
+
+The cool thing about this project is that we're going to use an API through developer.spotify.com to pull their data into R Studio, so that we can analyze it and manipulate the data. 
+
+You'll need to first request that Spotify sends you your personal account data, depending on how you use and listen to music on Spotify, this can take a week up to a month for them to give you everything via email. Afterwards, you'll then link your account to the developer.spotify.com part of their website to make an app in order to get your access keys to the API. 
+
+The data stored in the files Spotify gives you is in JSON, so the jsonlite package parses everything out and sorts the data neatly into a data frame which we can then manipulate using tidyverse calls. 
+
+After we can grab the access keys, we can use the spotifyr package to get everything we need! 
+
+Spotifyr is the package that houses the tools needed to access the API that houses Spotify's very comprehensive data on all the music we listen to that is attributed to our user profiles. 
+
+---
+
+## Getting the Data
+
+```{r data2, echo = F, warning = F, message = F, include = F}
+streamhist <- fromJSON("StreamingHistory0.json", flatten = TRUE)
+
+streamhist <- streamhist %>% 
+  as_tibble() %>% 
+  mutate_at("endTime", ymd_hm) %>% 
+  mutate(endTime = endTime - hours(6)) %>% 
+  mutate(date = floor_date(endTime, "day") %>% as_date, minutes = msPlayed / 60000)
+```
+
+The first thing we're going to do is grab our streaming history from the JSON files that Spotify gave us, which the code above demonstrates. The json file being read in the first call is in the 'my_spotify_data' file that you get from Spotify directly, titled 'StreamHistory0.json. For me, this was the only file, but for others it can be several depending on your usage, hence the length of time it takes you to receive the data at hand.  
+
+Once you receive your API access keys after making an app on developer.spotify.com, you can use the above calls to access Spotify's API. After, the script saves your access token as an object so that the other functions we run can call back to the access token so that it can validate itself. 
+
+## Putting Everything Together 
+
+```{r explore, echo = T}
+#Exploration
+list_of_top_20_artists <- get_my_top_artists_or_tracks(type = 'artists', time_range = 'short_term') %>% 
+  rowwise %>% 
+  select(name, genres) %>% 
+  mutate(genres = paste(genres, collapse = ', ')) %>% 
+  ungroup 
+```
+
+First, we tell Spotifyr to grab us a list of the top artists that we listen to in the short-term, then we grab the name of the artists and their genres; while we fix the genre column at the same time.  
+
+```{r list, echo = T}
+print(list_of_top_20_artists)
+```
+
+Here's the list of our Top 20 Short-Term most listened To artists.
+
+```{r binding, echo = T}
+favArtist1 <- get_artist_audio_features(artist= "De La Soul")
+favArtist2 <- get_artist_audio_features(artist= "Fugees")
+favArtist3 <- get_artist_audio_features(artist= "Bahamadia")
+favArtist4 <- get_artist_audio_features(artist= "Bobby Caldwell")
+favArtist5 <- get_artist_audio_features(artist= "Styles P")
+favArtist6 <- get_artist_audio_features(artist= "WWE")
+favArtist7 <- get_artist_audio_features(artist= "Plies")
+favArtist8 <- get_artist_audio_features(artist= "A Tribe Called Quest")
+favArtist9 <- get_artist_audio_features(artist= "Digable Planets")
+favArtist10 <- get_artist_audio_features(artist= "The Radio Dept.")
+favArtist11 <- get_artist_audio_features(artist= "Beach Fossils")
+favArtist12 <- get_artist_audio_features(artist= "Macabre Plaza")
+favArtist13 <- get_artist_audio_features(artist= "The Pains Of Being Pure At Heart")
+favArtist14 <- get_artist_audio_features(artist= "Craft Spells")
+favArtist15 <- get_artist_audio_features(artist= "Nujabes")
+favArtist16 <- get_artist_audio_features(artist= "The Beatnuts")
+favArtist17 <- get_artist_audio_features(artist= "Thundercat")
+favArtist18 <- get_artist_audio_features(artist= "Artifacts")
+favArtist19 <- get_artist_audio_features(artist= "Jazz Liberatorz")
+favArtist20 <- get_artist_audio_features(artist= "SZA")
+
+top20data <- rbind(favArtist1, favArtist2, favArtist3, favArtist4, favArtist5, 
+                   favArtist6, favArtist7, favArtist8, favArtist9, favArtist10, 
+                   favArtist11, favArtist12, favArtist13, favArtist14, 
+                   favArtist15, favArtist16, favArtist17, favArtist18, 
+                   favArtist19, favArtist20)
+```
+
+Above, we ask spotifyr to grab the artist audio features of every artist that appeared in our list, we then use Rbind to paste all of the resulting data frames together for analysis. The information here in the produced data set is very comprehensive, so I'm going to have to grab just the columns we need to produce the data we can use for analysis. 
+
+```{r summarise, echo = T}
+abridgedTop20Data <- 
+        select(top20data, c('artist_name', 'danceability','energy', 
+                                   'valence', 'loudness','speechiness',
+                                   'acousticness','liveness','instrumentalness',
+                                   'tempo','explicit'))
+
+meanTop20ArtistsData <- abridgedTop20Data %>%
+  group_by(artist_name) %>%
+  summarise(mean_danceability = mean(danceability), mean_energy = mean(energy), 
+            mean_valence = mean(valence), mean_loudness = mean(loudness), 
+            mean_speechiness = mean(speechiness), 
+            mean_acousticness = mean(acousticness), 
+            mean_liveness = mean(liveness), 
+            mean_instrumentalness = mean(instrumentalness), 
+            mean_tempo = mean(tempo), mean_explicit = mean(explicit), n = n())
+
+meanTop20ArtistsData <- merge(list_of_top_20_artists, meanTop20ArtistsData, by.x = "name", by.y = "artist_name")
+```
+
+I had all the columns in the abridged version of your Top 20 data set summarized to their mean, as it will make plotting for central tendency much more concise. The mean Top 20 data set is what we're going to use for making our plots. 
+
+## What does my music look like? 
+
+Now that I have my data, let's make visualizations with it! I formulated some pretty interesting hypotheses that were corroborated through visualization. For example, see below. 
+
+```{r energy valence plot, warning = F}
+top20EnergyValencePlot <- meanTop20ArtistsData %>% 
+  ggplot(aes(x = mean_valence, y = mean_energy, color = name, size = n, label = name)) +
+  geom_text_repel(hjust = 0, vjust = 0, show.legend = F) +
+  geom_point(alpha = 0.5, show.legend = T) +
+  scale_size(range = c(0, 12)) +
+  geom_vline(xintercept = 0.5) +
+  geom_hline(yintercept = 0.5) +
+  scale_x_continuous(expand = c(0, 0), limits = c(0, 1)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 1)) +
+  annotate('text', 0.25 / 2, 0.95, label = "Angry") +
+  annotate('text', 1.75 / 2, 0.95, label = "Happy") +
+  annotate('text', 1.75 / 2, 0.05, label = "Peaceful") +
+  annotate('text', 0.25 / 2, 0.05, label = "Depressing") +
+  labs(x = "Valence", y = "Energy", caption = "n = Catalog Size, smallest = Macabre Plaza") +
+  ggtitle("Emotional Quadrant For My Top 20 Artists", "Position based on energy and valence, size based on number of songs (Short Term)") +
+  theme(plot.title = element_text(face = "bold"), plot.caption = element_text(size = 6.5), legend.position = "bottom") +
+  guides(col = "none")
+```
+
+```{r plot1}
+plot(top20EnergyValencePlot)
+```
+
+This chart was made to show exactly where my music fell along the four emotional quadrants. For x, Energy is self-explanatory. 
+
+However, for y, Spotify's documentation defines Valence as: "A measure from 0.0 to 1.0 describing the musical positiveness conveyed by a track. Tracks with high valence sound more positive (e.g. happy, cheerful, euphoric), while tracks with low valence sound more negative (e.g. sad, depressed, angry)." 
+
+So considering that, each of the four quadrants represents an emotional extreme, so we can see where exactly all of our music falls along those lines. 
+
+Everything in the Top 20 of my most listened to tracks are pretty neutral, for the most part. Most of my artists are on the more happy sounding side than not, and there's a lot of energy present in my music. I guess I'm not the edgelord I thought I was. Hilariously, SZA's music was found the be the most angry thing on my list...
+
+So let's try to answer some more questions. 
+
+```{r tempo&energy, warning = F}
+top20tempo_energyplot <- 
+  ggplot(meanTop20ArtistsData, aes(x = mean_tempo, y = mean_energy, size = n, label = name)) +
+  geom_point(aes(color = name), alpha = .5, show.legend = F) +
+  scale_x_continuous(expand = c(0, 0), limits = c(90, 150)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(.45, .75)) +
+  labs(x = "Tempo", y = "Energy", caption = "n = Catalog Size, Smallest = Macabre Plaza") +
+  geom_text_repel(hjust = 0, vjust = 0) +
+  ggtitle("Top 20 Artists by Tempo & Energy", "Are faster songs more energetic?") +
+  theme(plot.title = element_text(face = "bold"))
+```
+
+```{r plot2}
+plot(top20tempo_energyplot)
+```
+
+Here, I'm looking to answer, does the catalog of the top 20 artists I listen have a body of work that is of a certain tempo and energy threshold? Can I reasonably say that there is a correlation between the two? Most the indie stuff that I listen to that's high tempo do have good energy. Also, the larger the print of the label, the bigger their music catalog is. 
+
+Now, the Rap/Hip-Hop/RnB artists that I listen to are also about right. Considering that those genres of music tend to fall between the 90-120 range as far as tempo goes. The artists that fall into that genre have music that's high energy, but fall into the range I gave being below 115 BPM, Styles P and Plies being great examples. 
+
+Next...
+
+```{r danceabiliy&valence, warning = F}
+top20dance_valplot <- 
+  ggplot(meanTop20ArtistsData, aes(x = mean_danceability, y = mean_valence, size = n, label = name)) +
+  geom_point(aes(color = name), alpha = .5, show.legend = FALSE) +
+  scale_x_continuous(expand = c(0, 0), limits = c(.4, .85)) +
+  labs(x = "Danceability", y = "Valence") +
+  geom_text_repel(hjust = 0, vjust = 0) +
+  ggtitle("Top 20 Artists by Danceability & Valence", "Is danceable music happier by nature?") +
+  labs(caption = "n = Catalog Size, Smallest = Macabre Plaza") +
+  theme(plot.title = element_text(face = "bold"))
+```
+
+```{r plot3}
+plot(top20dance_valplot)
+```
+
+Here we're looking at Danceability and Valence. Danceability can be described how easy is the artist's music to dance to and is a number measured from 0 to 1. 0 is least, 1 is most. 
+
+Of the artists featured here, nothing should be really surprising. The Radio Department, Pains and Beach Fossils aren't what I'd call danceable. Fun to chill to, but not danceable music. Pretty much everything from 0.58 or so and up is Rap/Hip-Hop/RnB.
+
+Also, heck yeah ATCQ and De La Soul are danceable, way to be spot on Spotify! 
+
+Then we have...
+
+```{r speech&explicit&loud, warning = F}
+top20selplot <- 
+  ggplot(meanTop20ArtistsData, aes(x = mean_speechiness, y = mean_explicit, size = n, label = name)) + 
+  geom_text_repel(hjust = 0, vjust = 0, show.legend = F) +
+  geom_point(aes(color = mean_loudness), alpha = .5) +
+  labs(x = "Speechiness", y = "Explicit", color = "Loudness", caption = "n = Catalog Size, Smallest = Macabre Plaza") +
+  ggtitle("Top 20 Artists by Speechiness, Explicitness and Loudness", "Are the more 'speechy' tracks for top artists inherently explicit and loud?") +
+  theme(plot.title = element_text(face = "bold"), legend.position = "bottom")
+```
+
+```{r plot4}
+plot(top20selplot)
+```
+
+Here, we take a look at a plot that measures the Speechniness of music (that is how much verbal speech it contains).
+
+While acousticness, liveness, and instrumentalness aren't talked about as much here, but they are important to talk about. The first measures if a given track is acoustic or not. Liveness measures if a track has the presence of an audience in the recording. While the last one predicts whether or not a track contains no vocals. All of these variables are measured from 0 to 1, which will be of importance later. 
+
+Regarding speechiness, Spotify's documentation describes it as: "The more exclusively speech-like the recording (e.g. talk show, audio book, poetry), the closer to 1.0 the attribute value. Values above 0.66 describe tracks that are probably made entirely of spoken words. Values between 0.33 and 0.66 describe tracks that may contain both music and speech, either in sections or layered, including such cases as rap music. Values below 0.33 most likely represent music and other non-speech-like tracks."
+
+How Explicit (swears/curses) a given artist's music is, is what's being visualized here along with how loud their music is inherently. This is measured between 0 and 1 on the y axis, while values typically range between -60 and 0 db for Loudness and are measured through a given points color. 
+
+According to this, you can imagine, most of the Rap/Hip-Hop/RnB artists outside of Thundercat and Nujabes have music that is the most Explicit, while also being speechy and loud. Stereotypes be damned, but seriously, this all tracks as Thundercat and Nujabes make music for a more "chill" demographic and are reflected as such in the data. 
+
+### Heatmap 
+
+Now for the heatmap I'm doing for this analysis, I stayed far, far away from base R's syntax because using it took forever to format and it wasn't all that pretty or customizable, so I used a package called pheatmap. 
+
+The first thing I did here was make a copy of the data...
+
+```{r copy data}
+meanTop20ArtistsData_copy <- meanTop20ArtistsData
+```
+
+...then I ascribed the names in column 1 to the row names of the data frame
+
+```{r row names}
+row.names(meanTop20ArtistsData_copy) <- meanTop20ArtistsData_copy[,1]
+```
+
+Next, I removed both categorical variables and columns where they're numeric, but they don't measure from 0 to 1. This is because as its a heatmap, all the values being measured need to equal from 0 to 1, or everything will be thrown off and it won't make sense because nothing scales meaningfully. So to that end, the names and genres are removed, along with loudness, tempo, and "n" (which represents the size of an artist's catalog).  
+
+```{r null redundant columns}
+meanTop20ArtistsData_copy$name <- NULL
+meanTop20ArtistsData_copy$genres <- NULL
+meanTop20ArtistsData_copy$mean_loudness <- NULL
+meanTop20ArtistsData_copy$mean_tempo <- NULL
+meanTop20ArtistsData_copy$n <- NULL
+```
+
+Now, I'm going to rename the columns for readability's sake, and turn the data frame into a matrix, because heatmap objects need to be based from numeric matrices in order to be usable. 
+
+```{r rename columns}
+#Rename columns
+
+colnames(meanTop20ArtistsData_copy) <- c("danceability", "energy", "valence", 
+                                         "speechiness", "acousticness", 
+                                         "liveness", "instrumentalness", 
+                                         "explicit")
+```
+
+```{r turn to matrix}
+#Turn data into matrix
+meanTop20ArtistsData_copy <- as.matrix(meanTop20ArtistsData_copy)
+```
+
+Now, I'll make the heatmap in the codes below. 
+
+```{r heatmap1}
+#Make heatmap
+top20heatmap <-
+  pheatmap(
+    meanTop20ArtistsData_copy,
+    cluster_rows = T,
+    clustering_distance_rows = "correlation",
+    legend_breaks = c(0, 0.5, 1),
+    legend_labels = c("0", "0.5", "1"),
+    cluster_cols = F,
+    angle_col = "315",
+    color = colorRampPalette(c("slategray3", "white", "green2"))(100),
+    display_numbers = T,
+    main = "Spotify Top 20 Artists Heatmap (Short Term)"
+  )
+```
+
+Behold! Below I'm making another heat map that details the data as it's being scaled before rendering it into the plot. Scaling aligns the values so that drastic fluctuations in the data set are toned down 
+
+```{r heatmap2}
+top20heatmapscaled <-
+  pheatmap(
+    meanTop20ArtistsData_copy,
+    cluster_rows = T,
+    clustering_distance_rows = "correlation",
+    legend_breaks = c(-2, 0, 2),
+    legend_labels = c("-2", "0", "2"),
+    cluster_cols = F,
+    angle_col = "315",
+    color = colorRampPalette(c("slategray3", "white", "green2"))(100),
+    display_numbers = T,
+    scale = "row",
+    main = "Spotify Top 20 Artists Heatmap (Short Term, Scaled)"
+  )
+```
+
+As you can see from both heatmaps, they validate many of the assumptions I made in the previous plots. It also makes drawing useful insights more easy, because everything is visualized right in front of you, making comparisons easier. 
+
+# Conclusion
+
+That does it for my Spotify Top 20 short-term Most Listened to Artists! Thank you reading, I hope you enjoyed reading this as much as I had fun making it. Music is truly a portal to the soul. 
+
