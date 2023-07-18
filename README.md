@@ -1,8 +1,6 @@
 # Spotify Usage Breakdown
 A review of top artists on Spotify 
 
----
-
 ## Overview
 
 In this R-based analysis, I took a look at the songs that I most frequently listened to over a prolonged period of time longitudinally. 
